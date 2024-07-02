@@ -1,7 +1,7 @@
 import { decodeByteArrayToData } from "./lib/ld2410/decode";
 
 import noble from '@abandonware/noble';
-import { debug } from './logger'
+import { logger } from './logger'
 
 // Constants for the device and protocol
 const SERVICE_UUIDS = ['AF30', 'FFF0', 'AE00']; // Replace with your actual service UUID
@@ -12,16 +12,16 @@ const READ_DATA_COMMAND = Buffer.from([0xfd, 0xfc, 0xfb, 0xfa, 0x2, 0x0, 0x62, 0
 
 noble.on('stateChange', (state) => {
   if (state === 'poweredOn') {
-    debug('Starting Bluetooth scan...');
+    logger.debug('Starting Bluetooth scan...');
     noble.startScanning(SERVICE_UUIDS, false);
   } else {
-    debug('Bluetooth is not powered on.');
+    logger.debug('Bluetooth is not powered on.');
     noble.stopScanning();
   }
 });
 
 noble.on('discover', (peripheral) => {
-  debug(`Discovered ${JSON.stringify(peripheral.advertisement)}`);
+  logger.debug(`Discovered ${JSON.stringify(peripheral.advertisement)}`);
   if (peripheral.advertisement.localName === 'HLK-LD2410_6F1F') {
     peripheral.connect((error) => {
       if (error) {
@@ -31,18 +31,17 @@ noble.on('discover', (peripheral) => {
       handleConnectedPeripheral(peripheral);
     });
   }
-  
 
   peripheral.on('disconnect', () => {
-    debug('Disconnected from device');
+    logger.debug('Disconnected from device');
     process.exit(0);
   });
 });
 
 function handleConnectedPeripheral(peripheral) {
 
-  debug(`Connected to ${peripheral.advertisement.localName}`);
-  peripheral.discoverAllServicesAndCharacteristics((error, services, characteristics) => {
+  logger.debug(`Connected to ${peripheral.advertisement.localName}`);
+  peripheral.discoverAllServicesAndCharacteristics((error, services, characteristics) => { // TODO: check if we can remove this discovery, since we already know the UUIDs
     if (error) {
       console.error('Service discovery error:', error);
       return;
@@ -51,20 +50,21 @@ function handleConnectedPeripheral(peripheral) {
     const readCharacteristic = characteristics[1]; // FF1
     readCharacteristic.notify(true);
 
-    debug(`Characteristic ${loginCharacteristic.uuid} found. Setting up configurations...`);
+    logger.debug(`Characteristic ${loginCharacteristic.uuid} found. Setting up configurations...`);
 
     loginCharacteristic.write(hexStringToByteArray(LOGIN_COMMAND), true, (error) => {
       if (error) {
         console.error('Error sending login command:', error);
         return;
       }
-      debug('Login sent.');
+      logger.debug('Login sent.');
       
-      readCharacteristic.on('data', (data, isNotification) => {
-        debug(decodeByteArrayToData(data).targetStatus);
+      readCharacteristic.on('data', (data: Uint8Array, isNotification) => {
+        const readResponse = decodeByteArrayToData(data);
+        logger.debug(readResponse.targetStatus);
       });
 
-      debug('Reading data...');
+      logger.debug('Reading data...');
       readCharacteristic.read();
     });
   });
