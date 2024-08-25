@@ -2,7 +2,8 @@ import { decodeByteArrayToData } from "./lib/ld2410/decode";
 
 import noble from '@abandonware/noble';
 import { logger } from './logger'
-
+import { postSensorData } from "./src/api";
+const SENSOR_ID = 'HLK-LD2410_6F1F';
 // Constants for the device and protocol
 const SERVICE_UUIDS = ['AF30', 'FFF0', 'AE00']; // Replace with your actual service UUID
 const CHARACTERISTIC_UUIDS = ['FFF1', 'FFF2']; // Replace with your actual characteristic UUID
@@ -22,7 +23,7 @@ noble.on('stateChange', (state) => {
 
 noble.on('discover', (peripheral) => {
   logger.debug(`Discovered ${JSON.stringify(peripheral.advertisement)}`);
-  if (peripheral.advertisement.localName === 'HLK-LD2410_6F1F') {
+  if (peripheral.advertisement.localName === SENSOR_ID) {
     peripheral.connect((error) => {
       if (error) {
         console.error('Connection error:', error);
@@ -58,10 +59,15 @@ function handleConnectedPeripheral(peripheral) {
         return;
       }
       logger.debug('Login sent.');
-      
+
       readCharacteristic.on('data', (data: Uint8Array, isNotification) => {
         const readResponse = decodeByteArrayToData(data);
-        logger.debug(readResponse.targetStatus);
+
+        if (readResponse.type === 'RADAR_DATA_OUTPUT') {
+          logger.debug(readResponse);
+          postSensorData(readResponse, SENSOR_ID);
+
+        }
       });
 
       logger.debug('Reading data...');
