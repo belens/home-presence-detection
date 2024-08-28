@@ -1,8 +1,11 @@
-// import { everyEqual } from "$lib/array/everyEqual";
-// import {
-//   configurationPayloadTrailer,
-//   radarDataOutputPayloadTrailer,
-// } from "$lib/ld2410/constants";
+import { decodeByteArrayToData } from "../lib/ld2410/decode";
+import noble, { Peripheral } from '@abandonware/noble';
+import { logger } from '../logger';
+import { postSensorData } from "./api";
+import { RadarDataOutputBasicPayload } from "../lib/ld2410/types";
+
+const SERVICE_UUIDS = ['AF30', 'FFF0', 'AE00'];
+const CHARACTERISTIC_UUIDS = ['FFF1', 'FFF2'];
 
 type ReadResult =
   | { value: Uint8Array; done: false }
@@ -10,110 +13,164 @@ type ReadResult =
 
 interface ReadEvent {
   eventType: "READ";
-  payload: Uint8Array;
+  payload: RadarDataOutputBasicPayload;
+  device: string;
 }
 
 interface WriteEvent {
   eventType: "WRITE";
   payload: Uint8Array;
+  device: string;
 }
 
 interface ConnectEvent {
   eventType: "CONNECT";
+  device: string;
 }
 
 interface SubscribedEvent {
   eventType: "SUBSCRIBED";
+  device: string;
 }
 
 interface DisconnectEvent {
   eventType: "DISCONNECT";
+  device: string;
 }
 
-type SerialEvent =
+export type BluetoothEvent =
   | ReadEvent
   | WriteEvent
   | ConnectEvent
   | DisconnectEvent
   | SubscribedEvent;
 
-type SubscribeCallback = (value: SerialEvent) => void;
+type SubscribeCallback = (value: BluetoothEvent) => void;
 
 interface Store {
   subscribe: (subscription: SubscribeCallback) => () => void;
 }
 
-export type SerialStore = Store & {
-  connect: () => void;
+export type BluetoothStore = Store & {
+  connect: () => Promise<void>;
   disconnect: () => void;
   write: (payload: Uint8Array) => void;
+  id: string;
+  subs: SubscribeCallback[]
 };
 
-export const createBluetoothReadStore = (
-  server: any
-): SerialStore => {
+export const createStore = (id: string, pw: string): BluetoothStore => {
   let stopping = false;
-  let sendPassCharacteristic: any | null = null;
-  let readDataCharacteristic: any | null = null;
+  let loginCharacteristic: noble.Characteristic | null = null;
+  let readDataCharacteristic: noble.Characteristic | null = null;
+  let peripheral: noble.Peripheral | null = null;
   const subs: SubscribeCallback[] = [];
   const writeQueue: Uint8Array[] = [];
 
-  const broadcastEvent = (e: SerialEvent) => subs.forEach((cb) => cb(e));
-
-  const write = async (payload: Uint8Array) => {
-    writeQueue.push(payload);
-  };
-
-  const writeForever = async () => {
-    while (!stopping) {
-      if (writeQueue.length > 0) {
-
-        const payload = writeQueue.shift();
-        sendPassCharacteristic.writeValue(payload)
-
-        broadcastEvent({ eventType: "WRITE", payload });
-      }
-      await new Promise((x) => setTimeout(x, 100));
-    }
-  };
+  const broadcastEvent = (e: BluetoothEvent) => subs.forEach((cb) => cb(e));
 
   const readForever = async () => {
     if (!readDataCharacteristic) { return }
-    await readDataCharacteristic.startNotifications();
-    readDataCharacteristic.addEventListener(
-      "characteristicvaluechanged",
-      (event: any) => {
+    readDataCharacteristic.on('data', (data: Uint8Array, isNotification) => {
+      const readResponse = decodeByteArrayToData(data);
+
+      if (readResponse.type === 'RADAR_DATA_OUTPUT') {
         broadcastEvent({
           eventType: "READ",
-          payload: new Uint8Array(event.target.value.buffer),
+          payload: readResponse,
+          device: id,
         });
       }
-    );
+    });
+
+    logger.debug('Reading data.');
+    readDataCharacteristic.read();
+
   };
+
   const login = async () => {
-    // this is hex version of the login command with the default password
-    const hexString = "FDFCFBFA0800A80048694C696E6B04030201"; 
-    const byteArray = hexStringToByteArray(hexString);
-
-    sendPassCharacteristic.writeValue(byteArray);
-
+    try {
+      await loginCharacteristic.writeAsync(hexStringToByteArray(pw), true);
+      logger.debug('Sent Login.');
+    } catch (error) {
+      logger.error('Error sending login command:' + error);
+    }
   };
+
   const connect = async () => {
-    const service = await server.getPrimaryService(0xfff0);
-    sendPassCharacteristic = await service.getCharacteristic(0xfff2);
-    readDataCharacteristic = await service.getCharacteristic(0xfff1);
     
+    await new Promise<void>((resolve, reject) => {
+      noble.on('stateChange', (state) => {
+        if (state === 'poweredOn') {
+          logger.debug('Start scanning.');
+          noble.startScanningAsync(SERVICE_UUIDS, false);
+        } else {
+          logger.error('Bluetooth is not powered on.', state);
+          noble.stopScanning();
+        }
+      });
+
+      noble.on('discover', async (p) => {
+        peripheral = p;
+        logger.debug(`Discovered ${JSON.stringify(peripheral.advertisement.localName)}`);
+        
+        if (peripheral.advertisement.localName === id) {
+          try {
+            await peripheral.connectAsync();
+            logger.log(`Connected to ${peripheral.advertisement.localName}`);
+            const { characteristics } = await peripheral.discoverAllServicesAndCharacteristicsAsync();
+            loginCharacteristic = characteristics[0]; // FF2
+            readDataCharacteristic = characteristics[1]; // FF1
+            readDataCharacteristic.notify(true);
+
+
+            peripheral.on('disconnect', () => {
+              logger.debug('Disconnected from device');
+              broadcastEvent({
+                eventType: "DISCONNECT",
+                device: id,
+              });
+            });
+
+            logger.debug(`Characteristic ${loginCharacteristic.uuid} found. Setting up configurations...`);
+            resolve();
+          } catch (error) {
+            reject('Connection error: ' + error);
+            return;
+          }
+        }
+      });
+    });
+
     login(); // Bluetooth require login
     readForever();
-    writeForever();
+    // writeForever();
     broadcastEvent({
       eventType: "CONNECT",
+      device: id,
     });
   };
 
   const disconnect = async () => {
     stopping = true;
-    server.disconnect(); // TODO: refactor
+    peripheral.disconnect(); // TODO: refactor
+  };
+
+  const write = async (payload: Uint8Array) => {
+    // writeQueue.push(payload);
+  };
+
+  const writeForever = async () => {
+    // while (!stopping) {
+    //   if (writeQueue.length > 0) {
+
+    //     const payload = writeQueue.shift();
+    //     loginCharacteristic.writeValue(payload)
+
+    //     broadcastEvent({ eventType: "WRITE", payload });
+    //   }
+    //   await new Promise((x) => setTimeout(x, 100));
+    // }
   };
 
   function hexStringToByteArray(hexString: string): Uint8Array {
@@ -133,6 +190,7 @@ export const createBluetoothReadStore = (
     subs.push(cb);
     cb({
       eventType: "SUBSCRIBED",
+      device: id,
     });
 
     return () => {
@@ -141,5 +199,5 @@ export const createBluetoothReadStore = (
     };
   };
 
-  return { connect, write, disconnect, subscribe };
+  return { connect, write, disconnect, subscribe, id, subs };
 };

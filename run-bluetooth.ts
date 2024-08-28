@@ -5,8 +5,8 @@ import { logger } from './logger'
 import { postSensorData } from "./src/api";
 const SENSOR_ID = 'HLK-LD2410_6F1F';
 // Constants for the device and protocol
-const SERVICE_UUIDS = ['AF30', 'FFF0', 'AE00']; // Replace with your actual service UUID
-const CHARACTERISTIC_UUIDS = ['FFF1', 'FFF2']; // Replace with your actual characteristic UUID
+const SERVICE_UUIDS = ['AF30', 'FFF0', 'AE00']; 
+const CHARACTERISTIC_UUIDS = ['FFF1', 'FFF2']; 
 
 const LOGIN_COMMAND = 'FDFCFBFA0800A80048694C696E6B04030201'; // Command to enable configuration mode
 const READ_DATA_COMMAND = Buffer.from([0xfd, 0xfc, 0xfb, 0xfa, 0x2, 0x0, 0x62, 0x0, 0x4, 0x3, 0x2, 0x1]); // Command to 
@@ -32,14 +32,14 @@ noble.on('discover', (peripheral) => {
       handleConnectedPeripheral(peripheral);
     });
   }
-
+  
   peripheral.on('disconnect', () => {
     logger.debug('Disconnected from device');
     process.exit(0);
   });
 });
 
-function handleConnectedPeripheral(peripheral) {
+function handleConnectedPeripheral(peripheral: noble.Peripheral) {
 
   logger.debug(`Connected to ${peripheral.advertisement.localName}`);
   peripheral.discoverAllServicesAndCharacteristics((error, services, characteristics) => { // TODO: check if we can remove this discovery, since we already know the UUIDs
@@ -66,7 +66,6 @@ function handleConnectedPeripheral(peripheral) {
         if (readResponse.type === 'RADAR_DATA_OUTPUT') {
           logger.debug(readResponse);
           postSensorData(readResponse, SENSOR_ID);
-
         }
       });
 

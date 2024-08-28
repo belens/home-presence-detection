@@ -1,15 +1,30 @@
+import chalk from 'chalk';
 
 export const logger = {
-    debug
+    log,
+    debug,
+    error
 }
 
-export function debug(message, type = 'LOG') {
-    printLog(message, 'DEBUG')
+export function log(message: any, ...messages: any[]) {
+    printLog('LOG', message);
 }
 
+export function debug(message: any, ...messages: any[]) {
+    printLog( 'DEBUG', message, ...messages);
+}
 
-function printLog(message, type = 'LOG') {
+export function error(message: any, ...messages: any[]) {
+    printLog(message, 'ERROR');
+}
+
+function printLog(type = 'LOG', message: any | Object, ...messages: any[]) {
     if (type === 'DEBUG') {
-        console.debug(message)
+        console.debug(chalk.gray(`[DEBUG] ${message}`, ...messages));
+    } else if (type === 'ERROR') {
+        console.error(message, ...messages);
+        console.error(chalk.red(`[ERROR] ${message}`, ...messages));
+    } else if (type === 'LOG') {
+        console.log(chalk.blue(`[LOG] ${message}`, ...messages));
     }
 }

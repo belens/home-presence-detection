@@ -1,8 +1,9 @@
-export type RadarDataOutputTargetStatus =
-  | "NO_TARGET"
-  | "MOVEMENT_TARGET"
-  | "STATIONARY_TARGET"
-  | "MOVEMENT_AND_STATIONARY_TARGET";
+export enum RadarDataOutputTargetStatus {
+  NO_TARGET = "NO_TARGET",
+  MOVEMENT_TARGET = "MOVEMENT_TARGET",
+  STATIONARY_TARGET = "STATIONARY_TARGET",
+  MOVEMENT_AND_STATIONARY_TARGET = "MOVEMENT_AND_STATIONARY_TARGET",
+}
 
 export type RadarDataOutputBasicPayload = {
   type: "RADAR_DATA_OUTPUT";

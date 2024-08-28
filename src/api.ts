@@ -1,13 +1,26 @@
 import { request } from 'http';
 import { RadarDataOutputBasicPayload } from '../lib/ld2410/types';
 
+let lastCallTime = {
+    'HLK-LD2410_2850': 0,
+    'HLK-LD2410_6F1F': 0
+};
+const DEBOUNCE_TIME = 500;
+
 export function postSensorData(sensorData: RadarDataOutputBasicPayload, room: string) {
     const data = JSON.stringify({
         status: sensorData.targetStatus,
         timestamp: new Date().toISOString(),
         room: room
     });
+    // console.log('Posting sensor data:', room, data);
+    
+    const now = Date.now();
+    if (now - lastCallTime[room] < DEBOUNCE_TIME) {
+        return;
+    }
 
+    lastCallTime[room] = now;
     const options = {
         hostname: 'localhost',
         port: 3000,
@@ -27,7 +40,8 @@ export function postSensorData(sensorData: RadarDataOutputBasicPayload, room: st
         });
 
         res.on('end', () => {
-            console.log('Response:', responseData);
+            const response = JSON.parse(responseData);
+            console.log('Response:', response.timestamp, response.room, response.status);
         });
     });
 

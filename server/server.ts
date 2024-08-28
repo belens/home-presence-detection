@@ -1,6 +1,7 @@
 import express from 'express';
 import mongoose from 'mongoose';
 import bodyParser from 'body-parser';
+import { RadarDataOutputTargetStatus } from '../lib/ld2410/types';
 
 const app = express();
 app.use(bodyParser.json());
@@ -8,11 +9,10 @@ app.use(bodyParser.json());
 // Connect to MongoDB
 mongoose.connect('mongodb://localhost/sensordb');
 
-// Define the schema
 const sensorSchema = new mongoose.Schema({
     status: {
         type: String,
-        // enum: ['empty', 'person', 'person_moving'],
+        enum: RadarDataOutputTargetStatus,
         required: true
     },
     timestamp: {

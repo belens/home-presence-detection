@@ -1,4 +1,4 @@
-import type { RadarDataOutputTargetStatus } from "./types";
+import { RadarDataOutputTargetStatus } from "./types";
 
 export const configurationPayloadHeader = [0xfd, 0xfc, 0xfb, 0xfa];
 export const configurationPayloadTrailer = [0x04, 0x03, 0x02, 0x01];
@@ -18,8 +18,8 @@ export const RadarDataOutputTargetStatusMap: Record<
   number,
   RadarDataOutputTargetStatus
 > = {
-  0x00: "NO_TARGET",
-  0x01: "MOVEMENT_TARGET",
-  0x02: "STATIONARY_TARGET",
-  0x03: "MOVEMENT_AND_STATIONARY_TARGET",
+  0x00: RadarDataOutputTargetStatus.NO_TARGET,
+  0x01: RadarDataOutputTargetStatus.MOVEMENT_TARGET,
+  0x02: RadarDataOutputTargetStatus.STATIONARY_TARGET,
+  0x03: RadarDataOutputTargetStatus.MOVEMENT_AND_STATIONARY_TARGET,
 };
